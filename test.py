@@ -3,17 +3,17 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LinearRegression
 from sklearn.ensemble import RandomForestRegressor
+from sklearn.tree import DecisionTreeRegressor
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
 # =========================================================
 # 1. DATA ACQUISITION
 # =========================================================
-# Load dataset from CSV file
-df = pd.read_csv("AI Job Market Dataset.csv"
+df = pd.read_csv("AI Job Market Dataset.csv")
 
 print("\n--- Dataset Loaded Successfully ---")
 print(df.head())
@@ -24,20 +24,18 @@ print(df.head())
 # =========================================================
 print("\n--- Data Cleaning ---")
 
-# Check missing values
 print("\nMissing Values Before Cleaning:")
 print(df.isnull().sum())
 
 # Remove duplicates
 df = df.drop_duplicates()
 
-# Fill missing values
-# Numeric columns -> fill with median
+# Fill missing numeric values with median
 numeric_cols = df.select_dtypes(include=np.number).columns
 for col in numeric_cols:
     df[col] = df[col].fillna(df[col].median())
 
-# Categorical columns -> fill with mode
+# Fill missing categorical values with mode
 categorical_cols = df.select_dtypes(include="object").columns
 for col in categorical_cols:
     df[col] = df[col].fillna(df[col].mode()[0])
@@ -68,8 +66,19 @@ df["total_skills"] = (
 
 df["is_remote"] = df["remote_type"].apply(lambda x: 1 if x == "Remote" else 0)
 
+# New feature: interaction between experience and total skills
+df["experience_skills_interaction"] = df["years_experience"] * df["total_skills"]
+
+# Optional demand-based feature
+df["high_demand_job"] = (df["job_openings"] > df["job_openings"].median()).astype(int)
+
 print("\nFeature Engineering Preview:")
-print(df[["total_skills", "is_remote"]].head())
+print(df[[
+    "total_skills",
+    "is_remote",
+    "experience_skills_interaction",
+    "high_demand_job"
+]].head())
 
 # ---------------------------------------------------------
 # 3B. Encoding
@@ -99,6 +108,7 @@ scale_cols = [
     "job_posting_year",
     "job_openings",
     "total_skills",
+    "experience_skills_interaction"
 ]
 
 scaler = StandardScaler()
@@ -124,13 +134,23 @@ print(df[[
     "years_experience",
     "salary",
     "job_openings",
-    "total_skills"
+    "total_skills",
+    "experience_skills_interaction"
 ]].corr())
+
+# Grouped analysis for stronger report
+print("\nAverage Salary by Experience Level:")
+print(df.groupby("experience_level")["salary"].mean().sort_values(ascending=False))
+
+print("\nAverage Salary by Education Level:")
+print(df.groupby("education_level")["salary"].mean().sort_values(ascending=False))
+
+print("\nAverage Salary by Remote Type:")
+print(df.groupby("remote_type")["salary"].mean().sort_values(ascending=False))
 
 
 # =========================================================
 # 5. DATA VISUALIZATION
-# Requirement: At least 3 techniques
 # =========================================================
 print("\n--- Visualizations ---")
 
@@ -160,18 +180,34 @@ plt.show()
 # 4. Heatmap
 plt.figure(figsize=(8, 5))
 sns.heatmap(
-    df[["years_experience", "salary", "job_openings", "total_skills"]].corr(),
+    df[["years_experience", "salary", "job_openings", "total_skills", "experience_skills_interaction"]].corr(),
     annot=True,
     cmap="coolwarm"
 )
 plt.title("Correlation Heatmap")
 plt.show()
 
+# 5. Barplot: Average salary by experience level
+plt.figure(figsize=(8, 5))
+sns.barplot(data=df, x="experience_level", y="salary")
+plt.title("Average Salary by Experience Level")
+plt.xlabel("Experience Level")
+plt.ylabel("Average Salary")
+plt.xticks(rotation=45)
+plt.show()
+
+# 6. Barplot: Average salary by education level
+plt.figure(figsize=(8, 5))
+sns.barplot(data=df, x="education_level", y="salary")
+plt.title("Average Salary by Education Level")
+plt.xlabel("Education Level")
+plt.ylabel("Average Salary")
+plt.xticks(rotation=45)
+plt.show()
+
 
 # =========================================================
 # 6. MODEL BUILDING
-# Requirement: At least 2 ML algorithms
-# We will predict salary (regression problem)
 # =========================================================
 print("\n--- Model Building ---")
 
@@ -199,10 +235,19 @@ rf_model = RandomForestRegressor(
 rf_model.fit(X_train, y_train)
 rf_preds = rf_model.predict(X_test)
 
+# ---------------------------------------------------------
+# Model 3: Decision Tree Regressor
+# ---------------------------------------------------------
+dt_model = DecisionTreeRegressor(
+    random_state=42,
+    max_depth=8
+)
+dt_model.fit(X_train, y_train)
+dt_preds = dt_model.predict(X_test)
+
 
 # =========================================================
 # 7. MODEL EVALUATION
-# Requirement: At least 2 evaluation metrics
 # =========================================================
 print("\n--- Model Evaluation ---")
 
@@ -226,9 +271,87 @@ print("RMSE:", rf_rmse)
 print("MAE:", rf_mae)
 print("R^2:", rf_r2)
 
-# Compare models
-print("\n--- Model Comparison ---")
-if rf_rmse < lr_rmse:
-    print("Random Forest performed better based on lower RMSE.")
-else:
-    print("Linear Regression performed better based on lower RMSE.")
+# Decision Tree Metrics
+dt_rmse = np.sqrt(mean_squared_error(y_test, dt_preds))
+dt_mae = mean_absolute_error(y_test, dt_preds)
+dt_r2 = r2_score(y_test, dt_preds)
+
+print("\nDecision Tree Regressor Results:")
+print("RMSE:", dt_rmse)
+print("MAE:", dt_mae)
+print("R^2:", dt_r2)
+
+# ---------------------------------------------------------
+# Cross-validation
+# ---------------------------------------------------------
+print("\n--- Cross Validation (5-Fold, R^2) ---")
+lr_cv = cross_val_score(lr_model, X, y, cv=5, scoring="r2")
+rf_cv = cross_val_score(rf_model, X, y, cv=5, scoring="r2")
+dt_cv = cross_val_score(dt_model, X, y, cv=5, scoring="r2")
+
+print("Linear Regression CV Mean R^2:", lr_cv.mean())
+print("Random Forest CV Mean R^2:", rf_cv.mean())
+print("Decision Tree CV Mean R^2:", dt_cv.mean())
+
+# ---------------------------------------------------------
+# Model comparison table
+# ---------------------------------------------------------
+results = pd.DataFrame({
+    "Model": ["Linear Regression", "Random Forest", "Decision Tree"],
+    "RMSE": [lr_rmse, rf_rmse, dt_rmse],
+    "MAE": [lr_mae, rf_mae, dt_mae],
+    "R^2": [lr_r2, rf_r2, dt_r2],
+    "CV Mean R^2": [lr_cv.mean(), rf_cv.mean(), dt_cv.mean()]
+})
+
+print("\n--- Model Comparison Table ---")
+print(results.sort_values(by="R^2", ascending=False))
+
+
+# =========================================================
+# 8. FEATURE IMPORTANCE
+# =========================================================
+print("\n--- Feature Importance (Random Forest) ---")
+
+feature_importance = pd.DataFrame({
+    "Feature": X.columns,
+    "Importance": rf_model.feature_importances_
+}).sort_values(by="Importance", ascending=False)
+
+print(feature_importance.head(10))
+
+plt.figure(figsize=(10, 6))
+sns.barplot(data=feature_importance.head(10), x="Importance", y="Feature")
+plt.title("Top 10 Important Features in Salary Prediction")
+plt.xlabel("Importance Score")
+plt.ylabel("Feature")
+plt.show()
+
+
+# =========================================================
+# 9. RESIDUAL ANALYSIS
+# =========================================================
+print("\n--- Residual Analysis ---")
+
+residuals = y_test - rf_preds
+
+plt.figure(figsize=(8, 5))
+sns.scatterplot(x=rf_preds, y=residuals)
+plt.axhline(0, color="red", linestyle="--")
+plt.title("Residual Plot for Random Forest")
+plt.xlabel("Predicted Salary")
+plt.ylabel("Residuals")
+plt.show()
+
+
+# =========================================================
+# 10. FINAL MODEL SUMMARY
+# =========================================================
+print("\n--- Final Model Summary ---")
+
+best_model_row = results.sort_values(by="R^2", ascending=False).iloc[0]
+print(f"Best model based on R^2: {best_model_row['Model']}")
+print(f"R^2: {best_model_row['R^2']}")
+print(f"RMSE: {best_model_row['RMSE']}")
+print(f"MAE: {best_model_row['MAE']}")
+print(f"CV Mean R^2: {best_model_row['CV Mean R^2']}")
