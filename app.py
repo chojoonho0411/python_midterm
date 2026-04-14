@@ -13,7 +13,7 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 # 1. DATA ACQUISITION
 # =========================================================
 # Load dataset from CSV file
-df = pd.read_csv("AI Job Market Dataset.csv"
+df = pd.read_csv("AI Job Market Dataset.csv")
 
 print("\n--- Dataset Loaded Successfully ---")
 print(df.head())
